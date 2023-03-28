@@ -1,0 +1,220 @@
+""" Hackathon 2023 Entry: Theme = Shakespeare
+
+This is a quick script I wrote that parses a text document
+of Shakespeare's sonnets into individual sonnets, lines,
+and words.
+
+It then takes these parsed outputs and uses them to 
+print out poems for the user to read.
+
+The user has the choice between a real sonnet, a "sonnet"
+generated using a Markov model of the words, or a "sonnet"
+made by randomly mashing lines together.
+"""
+
+
+import re, string, random
+
+
+def read_file(filepath: str) -> str:
+    """ Reads text file and returns string of data"""
+
+    with open(filepath, 'r') as sonnets_file:
+        sonnets_data = sonnets_file.read()
+    return sonnets_data
+
+
+def remove_front_and_back_matter(data: str) -> str:
+    """Removes the extraneous front and back matter of the text file"""
+
+    data = data.split("***")
+    data = data[2]
+    return data
+
+
+def split_into_sonnets(block: str) -> list:
+    """Splits the text file into a list of sonnets using regex of roman numerals"""
+
+    regex_pattern = r"\n\n(I|V|X|L|C){1,10}\n\n"
+    sonnets = re.split(regex_pattern, block)[1:]
+    # cleans out the list entries that are just roman numerals
+    sonnets = [sonnet for index, sonnet in enumerate(sonnets) \
+        if index % 2 != 0]
+    return sonnets
+
+
+def split_into_lines(sonnets: list) -> list:
+    """Takes the sonnet list, smooshes it together, then splits into a list of lines"""
+
+    block = '\n'.join(sonnets)
+    lines = block.split('\n')
+    return lines
+
+
+def split_into_words(sonnets: list) -> list:
+    """Takes the sonnet list, smooshes it together, then splits into a list of words 
+    
+    Also performs some cleaning of the text for modeling the Markov chain,
+    like removing punctuation and tab characters.
+    """
+    
+    block = '\n'.join(sonnets)
+    cleaned_block = ""
+    for char in block:
+        if char == '\'' or char not in string.punctuation:
+            cleaned_block += char
+    cleaned_block = cleaned_block.replace("\n", " \n ")
+    cleaned_block = cleaned_block.replace('\t', '')
+    words = cleaned_block.split(' ')
+    return words
+
+
+def markov_chain(words: list) -> tuple:
+    """Uses a Markov chain to model the sonnets
+    
+    Creates a set of words and iterates over them, creating a list of all
+    words that follow that word. More common following words are stored multiple times
+    thus increasing the chances that they'd get randomly pulled from the list.
+
+    Returns a tuple of (the set of words, the model)
+    """
+    word_set = set(words)
+    keys = []
+    values = []
+    for token in word_set:
+        next_words = [words[index+1] for index, word in enumerate(words[:-2]) \
+            if word == token]
+        keys.append(token)
+        values.append(next_words)
+    
+    markov_model = {k:v for (k, v) in zip(keys, values)}
+    return (word_set, markov_model)
+
+
+def generate_text(model: tuple) -> str:
+    """Generates a 'sonnet' using the Markov model
+    
+    First it randomly chooses the first word of the text
+    from the set of words other than the new line character.
+
+    Second, it loops, randomly choosing a new word to add 
+    with probabilities conditioned by the last word added
+    until 17 new line characters have been added.
+
+    Also, while looping, it inserts new lines for stanza
+    breaks when necessay.
+
+    It also refuses to add the same word twice in a row
+    to improve the output slightly and to better keep to 
+    the 4, 4, 4, 2 line stanza pattern of a sonnet.
+    """
+    word_set = model[0].difference('\n')
+    markov_model = model[1]
+
+    text_list = []
+    text_list.append(random.choice(list(word_set)))
+
+    while text_list.count("\n") < 17:
+        last_word = text_list[-1]
+        
+        choices = markov_model[last_word]
+        choice = random.choice(choices)
+        if choice == last_word:
+            continue
+        else:
+            text_list.append(choice)
+
+        lines = text_list.count('\n')
+        if lines in [4, 9, 14]:
+            text_list.append('\n')
+    
+    return ' '.join(text_list)
+
+
+def simple_rearrange(lines: list) -> str:
+    """Randomly smashes lines together into a 'sonnet'
+    
+    Randomly chooses from the list of lines 14 times 
+    and inserts blank lines between the stanzas
+    """
+    
+    poem = []
+    for i in range(17):
+        if len(poem) in [4, 9, 14]:
+            poem.append('\n')
+        else:
+            poem.append(random.choice(lines))
+    return '\n'.join(poem)
+
+
+def greeting() -> str:
+    """Greeting function that asks for user input"""
+
+    reply = input("Would you like to read some poetry? \n(Y/N): ")
+    if reply.lower() in ['n', 'no', 'no!']:
+        return 'quit'
+    elif reply.lower() in ['y', 'yes', 'yes!']:
+        print()
+        print("Great, what kind of poem would you like to read?")
+        print()
+        print("(1) one of Shakespeare's sonnet")
+        print("(2) a poem generated by a Markov chain model of the sonnets")
+        print("(3) a poem generated by randomly choosing lines from the sonnets")
+        choice = input("(1/2/3): ")
+    else:
+        print("I'm going to assume that means yes!\
+                 What kind of poem would you like to read?")
+        print()
+        print("(1) one of Shakespeare's sonnet")
+        print("(2) a poem generated by a Markov chain model of the sonnets")
+        print("(3) a poem generated by randomly choosing lines from the sonnets")
+        choice = input("(1/2/3): ")
+
+    print()
+    return choice
+        
+
+def main():
+    path: str = 'shakespeare-sonnets.txt'
+    data: str = read_file(path)
+    sonnets_block: str = remove_front_and_back_matter(data)
+    sonnets: list = split_into_sonnets(sonnets_block)
+    lines: list = split_into_lines(sonnets)
+    words: list = split_into_words(sonnets)
+    markov_model: tuple = markov_chain(words)
+    
+    print("Hello there!")
+    while True:
+        response = greeting()
+        if response == "quit":
+            print()
+            print("Okay, have a good day!")
+            print()
+            quit()
+        elif response == "1":
+            print()
+            print("A fan of the classics I see. Excellent choice.")
+            print()
+            text = random.choice(sonnets)
+        elif response == "2":
+            print()
+            print("I like to see someone who is unafraid of reading nonsense.")
+            print("It can be inspiring!")
+            print()
+            text = generate_text(markov_model)
+        elif response == "3":
+            print()
+            print("Fantastic! Let's see what happens when we blender the bard.")
+            print()
+            text = simple_rearrange(lines)
+        
+        print()
+        print(text)
+        print()
+        print()
+    
+
+if __name__ == "__main__":
+    main()
+
+
